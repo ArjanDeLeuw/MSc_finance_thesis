@@ -1,0 +1,675 @@
+
+################################################################################
+#################################### STEP 0 ####################################
+################################################################################
+# in 0 merging indices.R the indices for Equation 1 are imported and merged 
+#   based on date. 
+# in 1 explore and mutate indices the dataset ALL.indices is prepared for 
+#   the AR and VAR model: seasonality, logs, differencing, outliers,
+#   and descriptives are produced: table 1, figure 1, and plots/correlation 
+#   matrices for each index that are not presented in the thesis. 
+
+
+### load packages 
+#install.packages("xts")
+#install.packages("Hmisc")
+#install.packages("corrplot")
+#install.packages("forecast")
+#install.packages("mFilter")
+#install.packages("seasonal")
+
+
+### libraries
+library(corrplot)
+library(Hmisc)
+library(stargazer)
+library(zoo)
+library(xts)
+library(tidyverse)
+library(dplyr)
+library(modelr)
+library(forecast)
+library(mFilter)
+#library(vars)
+library(seasonal)
+
+### remove all but ALL.indices
+rm(list=ls()[-match("ALL.indices", ls())]) ; gc()
+setwd ("/Users/arjandeleuw/R projects/MSc_Finance/indices")
+
+
+### select and rename variables
+ALL.indices <- ALL.indices[,c("period", 
+                              "OTB_Eigen_Huis_Markt_Indicator",
+                              "CBS_transaction_price_index_existing_houses_baseyear_2015", 
+                              "CBS_volume", 
+                              "CBS_unemployment_rate",
+                              "CBS_newly_built_houses",
+                              "CBS_population_growth",
+                              "DNB_woninghypotheken_huishoudens_nieuwe_contracten_inclusief_heronderhandelingen",
+                              "DNB_R_woninghypotheken_huishoudens_nieuwe_contracten_inclusief_heronderhandelingen_rente",
+                              "ECB_interest_rate_change_component_EU_area",
+                              "ECB_HCIP_NL",
+                              "ECB_share_of_variable_rate_mortgages",
+                              "FRED_ten_year_long_term_bond_yield",
+                              "FRED_GDP",
+                              "EUROSTAT_construction_cost_index.new_residential_buildings",
+                              "woningbouwers_newly_built_houses", 
+                              "Bijdrage_algemeen_kopen_afgelopen_twaalf_maanden",
+                              "Bijdrage_algemeen_kopen_komende_twaalf_maanden",
+                              "Bijdrage_koopprijzen_afgelopen_twaalf_maanden",
+                              "Bijdrage_koopprijzen_komende_twaalf_maanden",
+                              "Bijdrage_rente_afgelopen_twaalf_maanden",
+                              "Bijdrage_rente_komende_twaalf_maanden")]
+
+names(ALL.indices) <- c("period", 
+                        "OTB_Eigen_Huis_Markt_Indicator",
+                        "CBS_transaction_price_index", 
+                        "CBS_volume", 
+                        "CBS_unemployment_rate",
+                        "CBS_newly_built_houses",
+                        "CBS_population_growth",
+                        "DNB_newly_made_loans",
+                        "DNB_interest_newly_made_loans", 
+                        "ECB_interest_rate_change_component_EU_area",
+                        "ECB_HCIP_NL",
+                        "ECB_share_of_variable_rate_mortgages",
+                        "FRED_ten_year_long_term_bond_yield",
+                        "FRED_GDP",
+                        "EUROSTAT_CCI_newly_built_residential",
+                        "woningbouwers_newly_built_houses",
+                        "Bijdrage_algemeen_kopen_afgelopen_twaalf_maanden",
+                        "Bijdrage_algemeen_kopen_komende_twaalf_maanden",
+                        "Bijdrage_koopprijzen_afgelopen_twaalf_maanden",
+                        "Bijdrage_koopprijzen_komende_twaalf_maanden",
+                        "Bijdrage_rente_afgelopen_twaalf_maanden",
+                        "Bijdrage_rente_komende_twaalf_maanden")
+
+################################################################################
+####################### STEP 1: Mutations: seasonality #########################
+################################################################################
+
+### set time series in two formats: ts and xts
+ALL.indices.ts <- ts(ALL.indices, 
+                     start = c(1995, 1),
+                     end = c(2021, 8), 
+                     frequency = 12)
+
+
+################################# seasonality ##################################
+# SA = Seasonally Adjusted
+temp <- final(seas(ALL.indices.ts[,c("OTB_Eigen_Huis_Markt_Indicator", 
+                            "CBS_transaction_price_index",
+                            "CBS_volume", 
+                            "DNB_newly_made_loans", 
+                            "ECB_share_of_variable_rate_mortgages", 
+                            "EUROSTAT_CCI_newly_built_residential", 
+                            "woningbouwers_newly_built_houses", 
+                            "ECB_HCIP_NL",  
+                            "CBS_population_growth", 
+                            "FRED_GDP")]))
+
+temp <- as.data.frame(temp)
+
+names(temp) <- c("OTB_Eigen_Huis_Markt_Indicator_SA", 
+                  "CBS_transaction_price_index_SA",
+                  "CBS_volume_SA", 
+                  "DNB_newly_made_loans_SA", 
+                  "ECB_share_of_variable_rate_mortgages_SA", 
+                  "EUROSTAT_CCI_newly_built_residential_SA", 
+                  "woningbouwers_newly_built_houses_SA", 
+                  "ECB_HCIP_NL_SA",  
+                  "CBS_population_growth_SA",
+                  "FRED_GDP_SA")
+
+temp$period <- seq(as.Date("1995-01-01"), by = "month", length.out = 320)
+
+ALL.indices <- plyr::join_all(list(ALL.indices, 
+                                   temp),
+                              by = "period",
+                              type = "left")
+
+
+# plot all time series
+time.series <- par(mfrow = c(2,2), mex = 0.6, mar = c(3,3,2,1) + 
+                     0.1, omi = rep(.3, 4))
+Map(function(x,y) plot(x, main =y, type = "line"), ALL.indices , names(ALL.indices))
+
+### conclusion 
+# based on the ARIMA X-13 procedure, the variables of EQ. 1 are seasonally 
+#   adjusted. The coefficients and plots suggest that there is clear 
+#   seasonality in CBS_VOLUME, DNB newly made loans, woningbouwers_newly_built_
+#   housing, ECB_HCIP_NL, and CBS_population_growth. 
+
+rm(temp, ALL.indices.ts)
+
+
+################################### logs #######################################
+attach(ALL.indices)
+ALL.indices$CBS_volume_SA_LN <- log(CBS_volume_SA)
+ALL.indices$DNB_newly_made_loans_SA_LN <- 
+  log(DNB_newly_made_loans_SA)
+ALL.indices$woningbouwers_newly_built_houses_SA_LN <- 
+  log(woningbouwers_newly_built_houses_SA)
+
+
+################################################################################
+############# STEP 2: produce growth rates and change in rates #################
+################################################################################
+
+### add population growth rate 
+attach(ALL.indices)
+ALL.indices$CBS_population_growth_rate <- (CBS_population_growth / 
+                                             CBS_population_end_period) * 100
+
+
+### set time series in two formats: ts and xts
+ALL.indices.ts <- ts(ALL.indices, 
+                     start = c(1995, 1),
+                     end = c(2021, 8), 
+                     frequency = 12)
+
+################################# change in rates ##############################
+# extract change in rates for percentage values (old - new)
+change.rates.percentage.values.ts <- -(ALL.indices.ts - 
+                                         (stats::lag(ALL.indices.ts, n = 1L, 
+                                                     default = NA)))
+
+# ad one row of NA's to achieve an equal number of 320 rows compared to all.indices
+change.rates.percentage.values.ts <- rbind(NA, change.rates.percentage.values.ts)
+
+# convert to date.frame
+change.rates.percentage.values.df <- data.frame(change.rates.percentage.values.ts)
+
+# add all % change in rates to ALL.indices 
+ALL.indices$CBS_change_in_unemployment_rate <- change.rates.percentage.values.df$ALL.indices.ts.CBS_unemployment_rate  
+ALL.indices$ECB_change_in_share_of_variable_rate_mortgages <- change.rates.percentage.values.df$ALL.indices.ts.ECB_share_of_variable_rate_mortgages
+ALL.indices$DNB_change_interest_newly_made_loans <- change.rates.percentage.values.df$ALL.indices.ts.DNB_interest_newly_made_loans
+ALL.indices$FRED_change_in_ten_year_long_term_bond_yield <- change.rates.percentage.values.df$ALL.indices.ts.FRED_ten_year_long_term_bond_yield
+ALL.indices$CBS_change_transaction_price_index <- change.rates.percentage.values.df$ALL.indices.ts.CBS_transaction_price_index
+
+ALL.indices$CBS_change_volume_SA_LN <- change.rates.percentage.values.df$ALL.indices.ts.CBS_volume_SA_LN
+ALL.indices$CBS_change_volume_SA <- change.rates.percentage.values.df$ALL.indices.ts.CBS_volume_SA
+
+ALL.indices$DNB_change_newly_made_loans_SA_LN <- change.rates.percentage.values.df$ALL.indices.ts.DNB_newly_made_loans_SA_LN
+ALL.indices$DNB_change_newly_made_loans_SA <- change.rates.percentage.values.df$ALL.indices.ts.DNB_newly_made_loans_SA
+
+ALL.indices$woningbouwers_change_newly_built_houses_SA_LN <- change.rates.percentage.values.df$ALL.indices.ts.woningbouwers_newly_built_houses_SA_LN
+ALL.indices$woningbouwers_change_newly_built_houses_SA <- change.rates.percentage.values.df$ALL.indices.ts.woningbouwers_newly_built_houses_SA
+
+
+# add all change in indices to ALL.indices
+ALL.indices$OTB_change_Eigen_Huis_Markt_Indicator <- change.rates.percentage.values.df$ALL.indices.ts.OTB_Eigen_Huis_Markt_Indicator
+ALL.indices$EUROSTAT_change_CCI_newly_built_residential <- change.rates.percentage.values.df$ALL.indices.ts.EUROSTAT_CCI_newly_built_residential 
+ALL.indices$ECB_change_HCIP_NL <- change.rates.percentage.values.df$ALL.indices.ts.ECB_HCIP_NL
+
+# sesonally adjsuted variables (SA)
+ALL.indices$ECB_change_HCIP_NL_SA <- change.rates.percentage.values.df$ALL.indices.ts.ECB_HCIP_NL_SA
+
+
+######################## growth rates for absolute values ######################
+# reproduce the steps above 
+
+### extract growth rates for absolute values (new - old / old)
+growth.rates.absolute.values.ts <- (ALL.indices.ts - stats::lag(ALL.indices.ts, -1)) / stats::lag(ALL.indices.ts, -1)
+
+# ad one row of NA's to achieve an equal number of 320 rows 
+growth.rates.absolute.values.ts <- rbind(NA, growth.rates.absolute.values.ts)
+
+# convert to data.frame
+growth.rates.absolute.values.df <- data.frame(growth.rates.absolute.values.ts)
+
+# add all growth rates to ALL.indices 
+ALL.indices$DNB_growth_newly_made_loans <- growth.rates.absolute.values.df$X.ALL.indices.ts...stats..lag.ALL.indices.ts...1...ALL.indices.ts.DNB_newly_made_loans 
+ALL.indices$FRED_growth_GDP <- growth.rates.absolute.values.df$X.ALL.indices.ts...stats..lag.ALL.indices.ts...1...ALL.indices.ts.FRED_GDP
+ALL.indices$woningbouwers_growth_newly_built_houses <- growth.rates.absolute.values.df$X.ALL.indices.ts...stats..lag.ALL.indices.ts...1...ALL.indices.ts.woningbouwers_newly_built_houses
+ALL.indices$CBS_growth_rate_volume <- growth.rates.absolute.values.df$X.ALL.indices.ts...stats..lag.ALL.indices.ts...1...ALL.indices.ts.CBS_volume
+  
+# add all growth rates of SA variables
+ALL.indices$CBS_growth_rate_volume_SA <- growth.rates.absolute.values.df$X.ALL.indices.ts...stats..lag.ALL.indices.ts...1...ALL.indices.ts.CBS_volume_SA
+ALL.indices$DNB_growth_rate_newly_made_loans_SA <- growth.rates.absolute.values.df$X.ALL.indices.ts...stats..lag.ALL.indices.ts...1...ALL.indices.ts.DNB_newly_made_loans_SA
+ALL.indices$CBS_growth_rate_population_growth_SA <- growth.rates.absolute.values.df$X.ALL.indices.ts...stats..lag.ALL.indices.ts...1...ALL.indices.ts.CBS_population_growth_SA
+ALL.indices$woningbouwers_growth_rate_newly_built_houses_SA <- growth.rates.absolute.values.df$X.ALL.indices.ts...stats..lag.ALL.indices.ts...1...ALL.indices.ts.woningbouwers_newly_built_houses_SA
+  
+
+### Remove obsolete data.frames
+rm(change.rates.percentage.values.df, change.rates.percentage.values.ts, 
+   growth.rates.absolute.values.df, growth.rates.absolute.values.ts, 
+   ALL.indices.ts)
+
+
+################################################################################
+####################### STEP 3: Mutations: outliers, lags ######################
+################################################################################
+
+################################### outliers ###################################
+attach(ALL.indices)
+
+# I only look at values after 2004
+Outliers <- lapply(ALL.indices[112:320,], 
+                              function(x) try (tsoutliers(x)))
+
+time.series <- par(mfrow = c(2,2), 
+                   mex = 0.6, 
+                   mar = c(3,3,2,1) + 0.1, 
+                   omi = rep(.3, 4))
+
+Map(function(x,y) plot(x, main =y, type = "line"), 
+    ALL.indices ,
+    names(ALL.indices))
+
+
+### conlusion: 
+# based on tsoutliers(x) and plots: 
+
+# OTB_Eigen_Huis_Markt_Indicator --> no outliers
+
+# CBS_transaction_price_index --> ountliers in months 207 - 209 
+# CBS_transaction_price_index_SA --> 8 outliers, SA is not preferred 
+
+# CBS_volume --> 2 outliers, not adjusted for
+# CBS_volume_SA --> 6 outliers
+
+# DNB_newly_made_loans --> 1 outlier, not adjusted for
+# DNB_newly_made_loans_SA --> 2 outlier, not adjusted for
+
+# DNB_interest on newly made loans, 5 outliers, 1 is adjusted for
+
+# ECB_share_of_variable_rate_mortgages --> no outliers
+# ECB_share_of_variable_rate_mortgages_SA --> no outliers
+
+# EUROSTAT_CCI_newly_built_residential  --> no outliers
+# EUROSTAT_CCI_newly_built_residential_SA  --> no outliers
+
+# ECB_HCIP_NL  --> no outliers
+# ECB_HCIP_NL_SA  --> no outliers
+
+# FRED_ten_year_long_term_bond_yield --> no outliers
+# FRED_GDP --> 25 outliers, GDP is very messy and removed. 
+
+# woningbouwers_newly_built_houses --> 0 outliers
+# woningbouwers_newly_built_houses_SA --> 0 outliers
+
+# CBS_unemployment_rate --> outliers in 2020 due to COVID 19. 
+
+# CBS_population_growth --> seosanlity and many outliers 
+# CBS_population_growth_SA --> 4 outliers
+
+# remove outlier november 2019 in interest on newly made loans
+ALL.indices$DNB_interest_newly_made_loans <- 
+  replace(ALL.indices$DNB_interest_newly_made_loans,
+          299, 
+          '2.04')
+
+ALL.indices$DNB_interest_newly_made_loans <- 
+  as.numeric(ALL.indices$DNB_interest_newly_made_loans)
+
+
+# conclusion: 
+#   - FRED_GDP is very messy and removed 
+#   - outliers explain important varaition aroudn e.g., the start of the GFC
+#     and COVID19-crisis. These outliers are therefore not removed. 
+#   - For outliers on the interest rate new loans one can argue to either 
+#     replace or keep the outliers. 4 outliers are the result of the great 
+#     financial crisis. 1 outlier occurred in Nov 2019 with increase of 2.42 
+#     - 2.08 = 0.34. This outlier is replaced by 2.040 relying on the box cox
+#     transformation.  
+
+rm(Outliers)
+
+
+##################################### lags #####################################
+attach(ALL.indices)
+require(Hmisc)
+
+
+### lag selection housing market fundamentals 
+# [112,] = 2004-01-01 
+
+
+Information.criteria <- lapply(ALL.indices[112:320,], 
+                              function(x) try (VARselect(x, lag.max =10)))
+
+Information.criteria$ECB_share_of_variable_rate_mortgages$selection
+
+plot(period, ECB_share_of_variable_rate_mortgages_SA, type = "line")
+# OTB_Eigen_Huis_Markt_Indicator, 1 lag
+#   SA: 1
+# CBS_transaction_price_index, 7 lags
+#   SA: 8 
+# CBS_volume, 5 lags 
+#   SA: 3 or 6
+# DNB_newly_made_loans 3 (HQ, SC) or 9 (AIC,)
+#   SA: 8 or 7
+# DNB_interest_newly_made_loans, 7 or 2 
+# ECB_HCIP_NL, 10 
+#   SA: 1 
+# ECB_share_of_variable_rate_mortgages, 6 or 1 
+#   SA: 6, 4 or 1
+# EUROSTAT_CCI_newly_built_residential --> 7 
+#   SA: 7 or 4
+# woningbouwers_newly_built_houses, 6 or 4
+#   SA: 9 or 3
+# CBS_popultation growth 2 or 5 
+#   SA: 4
+# unemployment rate, 3 or 9 lags 
+# FRED_ten_year_long_term_bond_yield, 2 
+
+
+rm(Information.criteria)
+
+
+################################################################################
+###################### STEP 4 EXTRACT VARIABLES OF INTEREST ####################
+################################################################################
+attach(ALL.indices)
+
+
+### create subset dataset for data analysis 
+ALL.indices <- 
+  ALL.indices[,c("period",
+                 # original values [2:14]
+                 "OTB_Eigen_Huis_Markt_Indicator",
+                 "CBS_transaction_price_index",
+                 "CBS_volume",
+                 "DNB_newly_made_loans",
+                 "DNB_interest_newly_made_loans",
+                 "EUROSTAT_CCI_newly_built_residential",
+                 "ECB_HCIP_NL",
+                 "FRED_GDP",
+                 "CBS_population_growth",
+                 "CBS_unemployment_rate",
+                 "FRED_ten_year_long_term_bond_yield",
+                 "woningbouwers_newly_built_houses",
+                 
+                 # SA variables [15:20]
+                 "OTB_Eigen_Huis_Markt_Indicator_SA",
+                 "CBS_volume_SA",
+                 "DNB_newly_made_loans_SA",
+                 "ECB_HCIP_NL_SA",
+                 "CBS_population_growth_SA",
+                 "woningbouwers_newly_built_houses_SA",
+                 
+                 # differenced [21:35]
+                 "OTB_change_Eigen_Huis_Markt_Indicator",   
+                 "CBS_change_transaction_price_index",
+                 "CBS_growth_rate_volume",
+                 "DNB_growth_newly_made_loans",                             
+                 "DNB_change_interest_newly_made_loans",
+                 "ECB_change_in_share_of_variable_rate_mortgages",
+                 "EUROSTAT_change_CCI_newly_built_residential",
+                 "ECB_change_HCIP_NL",
+                 "FRED_growth_GDP",
+                 "CBS_population_growth",
+                 "CBS_change_in_unemployment_rate",
+                 "FRED_change_in_ten_year_long_term_bond_yield",
+                 "ECB_interest_rate_change_component_EU_area",
+                 "woningbouwers_growth_newly_built_houses",
+                 
+                 # SA variables [36:42]
+                 "CBS_growth_rate_volume_SA",
+                 "CBS_change_volume_SA_LN",
+                 "DNB_growth_rate_newly_made_loans_SA",
+                 "DNB_change_newly_made_loans_SA_LN",
+                 "ECB_change_HCIP_NL_SA",
+                 "CBS_growth_rate_population_growth_SA",
+                 "woningbouwers_growth_rate_newly_built_houses_SA",
+                 "woningbouwers_change_newly_built_houses_SA_LN",
+                 
+                 # underlying indicators sentiment index [43:48]
+                 "Bijdrage_algemeen_kopen_afgelopen_twaalf_maanden",
+                 "Bijdrage_algemeen_kopen_komende_twaalf_maanden",
+                 "Bijdrage_koopprijzen_afgelopen_twaalf_maanden",
+                 "Bijdrage_koopprijzen_komende_twaalf_maanden",
+                 "Bijdrage_rente_afgelopen_twaalf_maanden",
+                 "Bijdrage_rente_komende_twaalf_maanden")]
+                     
+
+### subset dataset to 2004-2021 for plots
+# convert to .xts and subset
+ALL.indices.xts <- xts(ALL.indices, 
+                       order.by = period) 
+
+ALL.indices.2004.2021.xts  <- ALL.indices.xts["2004-04-01/2021-08-01"]
+
+# convert back to .df from .xts
+ALL.indices.2004.2021.df <- data.frame(ALL.indices.2004.2021.xts)
+
+# formats
+ALL.indices.2004.2021.df$period <- as.Date(ALL.indices.2004.2021.df$period, 
+                                        format = "%Y-%m-%d")
+ALL.indices.2004.2021.df[sapply(ALL.indices.2004.2021.df, is.character)] <- 
+  data.frame(lapply(ALL.indices.2004.2021.df[sapply(ALL.indices.2004.2021.df, 
+                                                 is.character)], as.numeric))
+
+
+### remove obsolete datasets
+rm(ALL.indices.ts, ALL.indices.xts, ALL.indices.2004.2021.xts)
+
+
+################################################################################
+############################# STEP 5: DESCRIPTIVES #############################
+################################################################################
+
+### create a differenced dataset and a dataset with original values
+# undifferenced.df contains all unadjusted variables, seasonally adjusted 
+#   variables and lagged variables. differenced.df contains all variables that
+#   that are differenced by calculating the growth rate or the change in a rate 
+#   or index
+undifferenced.df <- ALL.indices.2004.2021.df[, c(1:20)]
+differenced.df <- ALL.indices.2004.2021.df[,c(1, 21:42)]
+
+
+### summarize 
+stargazer(undifferenced.df, 
+          type = 'text', 
+          title = "Descriptive statistics", 
+          digits = 3, 
+          omit.summary.stat = c("p25", "p75"), 
+          out = "test.csv") # nice table!
+
+
+### correlation matrix and plot
+# matrix with all original values
+correlation.undifferenced.matrix <- round(cor((undifferenced.df[,c(2:20)]), 
+                                                use = "complete.obs"), 3)
+
+# matrix with original values and SA variables
+correlation.SA.matrix <- round(cor((undifferenced.df[, c(15:20)]),
+                               use = "complete.obs"),3)
+
+# matrix with differenced values (growth rates and change in rates)
+correlation.differenced.matrix <- round(cor((differenced.df[,sapply(differenced.df, 
+                                                                    is.numeric)]), 
+                                          use = "complete.obs"), 3)
+
+# create LaTex: 
+stargazer(correlation.undifferenced.matrix, 
+          title = "Correlation Matrix", 
+          type = "latex")
+
+stargazer(correlation.SA.matrix, 
+          title = "Correlation Matrix", 
+          type = "latex")
+
+stargazer(correlation.differenced.matrix, 
+          title = "Correlation Matrix", 
+          type = "text")
+
+
+rm(undifferenced.df, differenced.df)
+
+
+### time series plots 
+# key variables: volume, sentiment and return, CCI perhaps? 
+g <- ggplot(ALL.indices.2004.2021.df, aes(x = period))  
+g <- g + geom_line(aes(y = OTB_Eigen_Huis_Markt_Indicator), 
+                   color = "blue",
+                   size = 1, 
+                   stat = "identity")
+g <- g + geom_line(aes(y = CBS_transaction_price_index), 
+                   color = "dark grey", 
+                   stat = "identity")
+g <- g + geom_bar(aes(y = (CBS_volume/1000)), 
+                  color = "gray", 
+                  stat = "identity")
+g <- g + geom_hline(yintercept = as.numeric(ALL.indices.2004.2021.df$OTB_Eigen_Huis_Markt_Indicator[178]), 
+                    linetype = 1, 
+                    color = "gray", 
+                    size = 0.6)
+
+g <- g + scale_x_date(date_breaks = "1 year", 
+                      date_labels = "%Y")
+g <- g + scale_y_continuous(expand = c(0.01,0))
+
+g <- g + xlab("Transaction Year")
+g <- g + ylab("Index") 
+g <- g + theme_minimal(base_size = 10)
+g <- g
+
+dev.off()
+
+g
+
+
+### individual plots 
+# Housing market fundamentals: page 1 
+time.series.housing.one <- par(mfrow = c(4,2), mex = 0.6, mar = c(3,3,2,1) + 
+                                 0.1, omi = rep(.3, 4))
+
+plot(CBS_transaction_price_index ~ period, 
+     data = ALL.indices.2004.2021.df, 
+     type = "l",
+     main = "Transaction Price Index")
+plot(CBS_change_transaction_price_index ~ period, 
+     data = ALL.indices.2004.2021.df, 
+     type = "l",
+     main = "Change in Transaction Price Index")
+
+plot(CBS_volume_SA ~ period, 
+     data = ALL.indices.2004.2021.df, 
+     type = "l",
+     main = "Volume")
+plot(CBS_growth_rate_volume ~ period, 
+     data = ALL.indices.2004.2021.df, 
+     type = "l",
+     main = "Growth Rate Volume")
+
+plot(DNB_newly_made_loans_SA ~ period, 
+     data = ALL.indices.2004.2021.df, 
+     type = "l",
+     main= "Newly Made Loans")
+plot(DNB_growth_newly_made_loans ~ period, 
+     data = ALL.indices.2004.2021.df, 
+     type = "l",
+     main= "Growth rate Newly Made Loans")
+
+plot(DNB_interest_newly_made_loans ~ period, 
+     data = ALL.indices.2004.2021.df, 
+     type = "l",
+     main = "Interest rate on new loans")
+plot(DNB_change_interest_newly_made_loans ~ period, 
+     data = ALL.indices.2004.2021.df, 
+     type = "l",
+     main = "Change in interest rate on new loans")
+
+
+dev.off()
+
+
+# Housing market fundamentals: page 2
+time.series.housing.two <- par(mfrow = c(4,2), mex = 0.6, mar = c(3,3,2,1) + 
+                                 0.1, omi = rep(.3, 4))
+
+plot(ECB_share_of_variable_rate_mortgages ~ period, 
+     data = ALL.indices.2004.2021.df, 
+     type = "l",
+     main = "Share of Variable Rate Mortgages", cex.main = 0.95)
+plot(ECB_change_in_share_of_variable_rate_mortgages ~ period, 
+     data = ALL.indices.2004.2021.df, 
+     type = "l",
+     main = "Change in Share of Variable Rate Mortgages", cex.main = 0.95)
+
+plot(EUROSTAT_CCI_newly_built_residential ~ period, 
+     data = ALL.indices.2004.2021.df, 
+     type = "l",
+     main = "CCI index")
+plot(EUROSTAT_change_CCI_newly_built_residential ~ period, 
+     data = ALL.indices.2004.2021.df, 
+     type = "l",
+     main = "Change in CCI index")
+
+plot(woningbouwers_newly_built_houses_SA ~ period, 
+     data = ALL.indices.2004.2021.df, 
+     type = "l",
+     main = "Newly built housing")
+plot(woningbouwers_growth_newly_built_houses ~ period, 
+     data = ALL.indices.2004.2021.df, 
+     type = "l",
+     main = "Growth rate newly built housing")
+
+plot(ECB_HCIP_NL_SA ~ period, 
+     data = ALL.indices.2004.2021.df, 
+     type = "l", 
+     main = "HCIP Overall Index (NL)" )
+plot(ECB_change_HCIP_NL ~ period, 
+     data = ALL.indices.2004.2021.df, 
+     type = "l", 
+     main = "Change in HCIP Overall Index (NL)" )
+
+dev.off()
+
+
+# Macro-economic fundamentals: page 1
+time.series.macro.one <- par(mfrow = c(4,2), mex = 0.6, mar = c(3,3,2,1) + 
+                               0.1, omi = rep(.3, 4))
+
+plot(FRED_GDP ~ period, 
+     data = ALL.indices.2004.2021.df, 
+     type = "l",
+     main = "GDP (NL)")
+plot(FRED_growth_GDP ~ period, 
+     data = ALL.indices.2004.2021.df, 
+     type = "l",
+     main = "Grow rate GDP (NL)")
+
+plot(FRED_ten_year_long_term_bond_yield  ~ period, 
+     data = ALL.indices.2004.2021.df, 
+     type = "l",
+     main = "10Y bond yield (NL)")
+plot(FRED_change_in_ten_year_long_term_bond_yield  ~ period, 
+     data = ALL.indices.2004.2021.df, 
+     type = "l",
+     main = "Change in 10Y bond yield (NL)")
+
+plot(CBS_unemployment_rate ~ period, 
+     data = ALL.indices.2004.2021.df, 
+     type = "l",
+     main = "Unemployment Rate (NL)")
+plot(CBS_change_in_unemployment_rate ~ period, 
+     data = ALL.indices.2004.2021.df, 
+     type = "l",
+     main = "Change in unemployment Rate (NL)")
+
+plot(ECB_interest_rate_change_component_EU_area ~ period, 
+     data = ALL.indices.2004.2021.df, 
+     type = "l",
+     main = "Interest rate change (EU area)")
+
+plot(CBS_population_growth_SA ~ period, 
+     data = ALL.indices.2004.2021.df, 
+     type = "l",
+     main = "Population Growth (NL)")
+
+
+dev.off()
+
+
+################################################################################
+################################### References #################################
+################################################################################
+# https://rstudio-pubs-static.s3.amazonaws.com/288218_117e183e74964557a5da4fc59
+# 02fc671.html
+
+
+
