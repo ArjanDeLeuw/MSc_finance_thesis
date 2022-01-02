@@ -24,7 +24,7 @@ in 5 spatial analysis.R data is aggregated to a municipality level to produce ma
 
 
 # LaTex MSc Finance Thesis: 
-contains all writings and figures. 
+contains all writings, tables, and figures. 
 
 
 # Indices: 
