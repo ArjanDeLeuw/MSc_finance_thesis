@@ -1,10 +1,11 @@
 # MSc_finance_thesis
- contains all R- and Latex-scripts for the MSc Finance thesis on sentiment in the housing market.
+ Contains all R- and Latex-scripts for the MSc Finance thesis on sentiment in the housing market.
  Transaction data and the sentiment index are protected by the Dutch Land Registry Office and TU Delft and cannot be distributed. 
 
 
 # links: 
-Overleaf: https://www.overleaf.com/read/fknznnrdqcqj
+Overleaf: https://www.overleaf.com/read/fknznnrdqcqj 
+
 Github: https://github.com/ArjanDeLeuw/MSc_finance_thesis
 
 
@@ -22,7 +23,7 @@ in 4 hedonic sentiment model.R the transaction data is merged the indices based 
 in 5 spatial analysis.R data is aggregated to a municipality level to produce maps in Arc.GIS (figure and Appendix A.3).
 
 
-# LaTex: 
+# LaTex MSc Finance Thesis: 
 contains all writings and figures. 
 
 
